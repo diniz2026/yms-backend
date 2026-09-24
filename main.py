@@ -554,27 +554,28 @@ def list_schedules_page(username: str = Depends(get_current_username)):
             .btn-clear { background-color: #6c757d; color: white; padding: 11px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; }
             .btn-clear:hover { background-color: #5a6268; }
 
-            /* CARDS DE RESUMO DIÁRIO */
-            .stats-container {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            /* PAINEL DE KPI / CONTADORES */
+            .kpi-container {
+                display: flex;
                 gap: 15px;
                 margin-bottom: 20px;
+                flex-wrap: wrap;
             }
-            .stat-card {
+            .kpi-card {
                 background: #f8f9fa;
                 border: 1px solid #e9ecef;
                 border-left: 5px solid #0b192c;
                 border-radius: 8px;
                 padding: 15px 20px;
+                flex: 1;
+                min-width: 200px;
                 display: flex;
                 flex-direction: column;
-                gap: 5px;
+                justify-content: center;
             }
-            .stat-card.today { border-left-color: #28a745; background: #f4fdf5; }
-            .stat-card.tomorrow { border-left-color: #ffc107; background: #fffdf4; }
-            .stat-title { font-size: 13px; font-weight: 700; color: #666; text-transform: uppercase; }
-            .stat-value { font-size: 24px; font-weight: 700; color: #0b192c; }
+            .kpi-card.highlight { border-left-color: #ffc107; background: #fffdf5; }
+            .kpi-title { font-size: 13px; font-weight: 700; color: #6c757d; text-transform: uppercase; margin-bottom: 5px; }
+            .kpi-value { font-size: 24px; font-weight: 700; color: #0b192c; }
 
             .filter-bar {
                 background-color: #f8f9fa;
@@ -672,7 +673,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
             @media print {
                 body { background-color: #fff; padding: 0; }
                 .container { box-shadow: none; max-width: 100%; padding: 0; }
-                .no-print, .action-column, .filter-bar, .stats-container { display: none !important; }
+                .no-print, .action-column, .filter-bar, .kpi-container { display: none !important; }
                 .header-bar { border-bottom: 2px solid #000; padding-bottom: 10px; }
                 th { background-color: #eee !important; color: #000 !important; }
                 table { font-size: 12px; }
@@ -695,19 +696,19 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 </div>
             </div>
 
-            <!-- CARDS DE QUANTIDADE POR DIA -->
-            <div class="stats-container no-print">
-                <div class="stat-card today">
-                    <span class="stat-title">📅 Agendados Para Hoje</span>
-                    <span class="stat-value" id="countToday">0</span>
+            <!-- CARTÕES DE KPI / CONTADORES -->
+            <div class="kpi-container no-print">
+                <div class="kpi-card">
+                    <span class="kpi-title">📅 Agendados para Hoje</span>
+                    <span class="kpi-value" id="kpiToday">0</span>
                 </div>
-                <div class="stat-card tomorrow">
-                    <span class="stat-title">📅 Agendados Para Amanhã</span>
-                    <span class="stat-value" id="countTomorrow">0</span>
+                <div class="kpi-card">
+                    <span class="kpi-title">🗓️ Agendados para Amanhã</span>
+                    <span class="kpi-value" id="kpiTomorrow">0</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-title">📊 Total na Lista</span>
-                    <span class="stat-value" id="countTotal">0</span>
+                <div class="kpi-card highlight">
+                    <span class="kpi-title" id="filteredTitle">📊 Fornecedores na Lista (Filtrados)</span>
+                    <span class="kpi-value" id="kpiTotalFiltered">0</span>
                 </div>
             </div>
 
@@ -759,6 +760,15 @@ def list_schedules_page(username: str = Depends(get_current_username)):
         <script>
             let allSchedules = [];
 
+            function getFormattedDate(offsetDays = 0) {
+                const d = new Date();
+                d.setDate(d.getDate() + offsetDays);
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
             async function loadSchedules() {
                 try {
                     const res = await fetch('/api/schedules');
@@ -768,38 +778,36 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         return;
                     }
                     allSchedules = await res.json();
-                    updateStats(allSchedules);
-                    renderTable(allSchedules);
+                    updateGlobalKPIs();
+                    applyFilters();
                 } catch (err) {
                     console.error(err);
                     document.getElementById('tableBody').innerHTML = '<tr><td colspan="12" class="no-data" style="color:red;">Erro ao carregar dados.</td></tr>';
                 }
             }
 
-            function updateStats(data) {
-                const todayStr = new Date().toISOString().split('T')[0];
-                
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowStr = tomorrow.toISOString().split('T')[0];
+            function updateGlobalKPIs() {
+                const todayStr = getFormattedDate(0);
+                const tomorrowStr = getFormattedDate(1);
 
-                let todayCount = 0;
-                let tomorrowCount = 0;
+                const countToday = allSchedules.filter(item => item.schedule_time === todayStr).length;
+                const countTomorrow = allSchedules.filter(item => item.schedule_time === tomorrowStr).length;
 
-                data.forEach(item => {
-                    // Conta apenas se estiver Aprovado ou Pendente (ignora recusados se preferir, ou conta todos)
-                    if (item.schedule_time === todayStr) todayCount++;
-                    if (item.schedule_time === tomorrowStr) tomorrowCount++;
-                });
-
-                document.getElementById('countToday').innerText = todayCount;
-                document.getElementById('countTomorrow').innerText = tomorrowCount;
-                document.getElementById('countTotal').innerText = data.length;
+                document.getElementById('kpiToday').innerText = countToday;
+                document.getElementById('kpiTomorrow').innerText = countTomorrow;
             }
 
-            function renderTable(data) {
+            function renderTable(data, selectedDate) {
                 const tbody = document.getElementById('tableBody');
                 tbody.innerHTML = '';
+
+                // Atualiza o contador de filtrados e o título dinamicamente conforme a data selecionada
+                document.getElementById('kpiTotalFiltered').innerText = data.length;
+                if (selectedDate) {
+                    document.getElementById('filteredTitle').innerText = `📊 Fornecedores no Dia (${selectedDate})`;
+                } else {
+                    document.getElementById('filteredTitle').innerText = `📊 Total na Lista (Filtrados)`;
+                }
 
                 if (data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="12" class="no-data">Nenhum agendamento encontrado para os filtros selecionados.</td></tr>';
@@ -836,7 +844,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         const emailBodyReject = encodeURIComponent(`Olá,\\n\\nSua solicitação de agendamento para o dia ${row.schedule_time} não pôde ser aprovada.\\n\\nPor favor, acesse nosso site e realize uma nova solicitação selecionando outra data.\\n\\nAtenciosamente,\\nDiniz Alimentos`);
 
                         btnApprove = `<a class="btn-action btn-app" href="mailto:${emailAddr}?subject=${emailSubjApprove}&body=${emailBodyApprove}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Aprovado')">✉️ Aprovar</a>`;
-                        btnReject = `<a class="btn-action btn-rej" href="mailto:${emailAddr}?subject=${emailSubjReject}&body=${emailBodyReject}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Recusado')">✉️ Recusar</a>`;
+                        btnReject = `<a class="btn-action btn-rej" href="mailto:${emailAddr}?subject=${emailSubjReject}&body=${emailBodyReject}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Recusado')">❌ Recusar</a>`;
                     }
 
                     tr.innerHTML = `
@@ -879,14 +887,14 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     return matchStatus && matchDate && matchSearch;
                 });
 
-                renderTable(filtered);
+                renderTable(filtered, dateVal);
             }
 
             function clearFilters() {
                 document.getElementById('filterStatus').value = '';
                 document.getElementById('filterDate').value = '';
                 document.getElementById('filterSearch').value = '';
-                renderTable(allSchedules);
+                renderTable(allSchedules, '');
             }
 
             async function updateStatus(id, newStatus) {
