@@ -554,6 +554,28 @@ def list_schedules_page(username: str = Depends(get_current_username)):
             .btn-clear { background-color: #6c757d; color: white; padding: 11px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; }
             .btn-clear:hover { background-color: #5a6268; }
 
+            /* CARDS DE RESUMO DIÁRIO */
+            .stats-container {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            .stat-card {
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-left: 5px solid #0b192c;
+                border-radius: 8px;
+                padding: 15px 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+            .stat-card.today { border-left-color: #28a745; background: #f4fdf5; }
+            .stat-card.tomorrow { border-left-color: #ffc107; background: #fffdf4; }
+            .stat-title { font-size: 13px; font-weight: 700; color: #666; text-transform: uppercase; }
+            .stat-value { font-size: 24px; font-weight: 700; color: #0b192c; }
+
             .filter-bar {
                 background-color: #f8f9fa;
                 border: 1px solid #e9ecef;
@@ -650,7 +672,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
             @media print {
                 body { background-color: #fff; padding: 0; }
                 .container { box-shadow: none; max-width: 100%; padding: 0; }
-                .no-print, .action-column, .filter-bar { display: none !important; }
+                .no-print, .action-column, .filter-bar, .stats-container { display: none !important; }
                 .header-bar { border-bottom: 2px solid #000; padding-bottom: 10px; }
                 th { background-color: #eee !important; color: #000 !important; }
                 table { font-size: 12px; }
@@ -670,6 +692,22 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 <div class="btn-group">
                     <button class="btn btn-pdf" onclick="window.print()">📄 Exportar PDF / Imprimir</button>
                     <a href="/" target="_blank" class="btn btn-new">➕ Novo Agendamento</a>
+                </div>
+            </div>
+
+            <!-- CARDS DE QUANTIDADE POR DIA -->
+            <div class="stats-container no-print">
+                <div class="stat-card today">
+                    <span class="stat-title">📅 Agendados Para Hoje</span>
+                    <span class="stat-value" id="countToday">0</span>
+                </div>
+                <div class="stat-card tomorrow">
+                    <span class="stat-title">📅 Agendados Para Amanhã</span>
+                    <span class="stat-value" id="countTomorrow">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-title">📊 Total na Lista</span>
+                    <span class="stat-value" id="countTotal">0</span>
                 </div>
             </div>
 
@@ -730,11 +768,33 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         return;
                     }
                     allSchedules = await res.json();
+                    updateStats(allSchedules);
                     renderTable(allSchedules);
                 } catch (err) {
                     console.error(err);
                     document.getElementById('tableBody').innerHTML = '<tr><td colspan="12" class="no-data" style="color:red;">Erro ao carregar dados.</td></tr>';
                 }
+            }
+
+            function updateStats(data) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+                let todayCount = 0;
+                let tomorrowCount = 0;
+
+                data.forEach(item => {
+                    // Conta apenas se estiver Aprovado ou Pendente (ignora recusados se preferir, ou conta todos)
+                    if (item.schedule_time === todayStr) todayCount++;
+                    if (item.schedule_time === tomorrowStr) tomorrowCount++;
+                });
+
+                document.getElementById('countToday').innerText = todayCount;
+                document.getElementById('countTomorrow').innerText = tomorrowCount;
+                document.getElementById('countTotal').innerText = data.length;
             }
 
             function renderTable(data) {
@@ -765,7 +825,6 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         const textApprove = encodeURIComponent(`Olá! Seu agendamento para o dia ${row.schedule_time} na Diniz Alimentos foi APROVADO. Sua pré-senha é: ${row.access_code}.`);
                         const textReject = encodeURIComponent(`Olá! Infelizmente seu agendamento para o dia ${row.schedule_time} não pôde ser aprovado. Por favor, acesse nosso site e faça uma nova solicitação.`);
                         
-                        // target="_blank" garante que o painel continue aberto na tela atual
                         btnApprove = `<a class="btn-action btn-app" href="https://wa.me/${phoneNum}?text=${textApprove}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Aprovado')">🟢 Aprovar</a>`;
                         btnReject = `<a class="btn-action btn-rej" href="https://wa.me/${phoneNum}?text=${textReject}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Recusado')">❌ Recusar</a>`;
                     } else if (contactPref === 'email' || emailAddr) {
