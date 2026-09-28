@@ -59,6 +59,7 @@ def send_email_notification(schedule_data: dict):
                 
                 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f9f9f9;">
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Fornecedor:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data['supplier_name']}</td></tr>
+                    <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Nota Fiscal (NF):</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee; color: #0b192c; font-weight: bold;">{schedule_data.get('invoice_number', '-')}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Contato Preferencial:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data.get('preferred_contact', 'whatsapp').upper()}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Dado de Contato:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data.get('phone') if schedule_data.get('preferred_contact') == 'whatsapp' else schedule_data.get('email')}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Placa do Veículo:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data['truck_plate']}</td></tr>
@@ -121,6 +122,7 @@ def init_db():
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS email VARCHAR(100);
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(20) DEFAULT 'whatsapp';
+            ALTER TABLE schedules ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
             """
         )
         conn.commit()
@@ -135,6 +137,7 @@ init_db()
 
 class ScheduleRequest(BaseModel):
     supplier_name: str
+    invoice_number: str = ""
     preferred_contact: str = "whatsapp"
     phone: str = ""
     email: str = ""
@@ -332,6 +335,11 @@ def get_form():
                     </div>
 
                     <div class="form-group">
+                        <label for="invoiceNumber">NÚMERO DA NOTA FISCAL (NF):</label>
+                        <input type="text" id="invoiceNumber" class="uppercase-input" required placeholder="Ex: 123456 ou 000.123.456">
+                    </div>
+
+                    <div class="form-group">
                         <label for="preferredContact">RECEBER CONFIRMAÇÃO POR:</label>
                         <select id="preferredContact" onchange="toggleContactInput()" required>
                             <option value="whatsapp" selected>📱 WhatsApp</option>
@@ -451,6 +459,7 @@ def get_form():
 
                 const payload = {
                     supplier_name: document.getElementById('supplier').value.toUpperCase(),
+                    invoice_number: document.getElementById('invoiceNumber').value.toUpperCase(),
                     preferred_contact: preferred,
                     phone: preferred === 'whatsapp' ? cleanPhone : '',
                     email: preferred === 'email' ? document.getElementById('email').value.trim() : '',
@@ -728,7 +737,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     <input type="date" id="filterDate" onchange="applyFilters()">
                 </div>
                 <div class="filter-group">
-                    <label for="filterSearch">🔍 Buscar (Fornecedor, Placa, Senha):</label>
+                    <label for="filterSearch">🔍 Buscar (Fornecedor, NF, Placa, Senha):</label>
                     <input type="text" id="filterSearch" placeholder="Digite para buscar..." oninput="applyFilters()">
                 </div>
                 <button class="btn-clear" onclick="clearFilters()">🔄 Limpar Filtros</button>
@@ -741,6 +750,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         <th>Senha</th>
                         <th>Status</th>
                         <th>Fornecedor</th>
+                        <th>Nota Fiscal (NF)</th>
                         <th>Contato Escolhido</th>
                         <th>Placa</th>
                         <th>Peso (kg)</th>
@@ -752,7 +762,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     </tr>
                 </thead>
                 <tbody id="tableBody">
-                    <tr><td colspan="12" class="no-data">Carregando agendamentos...</td></tr>
+                    <tr><td colspan="13" class="no-data">Carregando agendamentos...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -782,7 +792,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     applyFilters();
                 } catch (err) {
                     console.error(err);
-                    document.getElementById('tableBody').innerHTML = '<tr><td colspan="12" class="no-data" style="color:red;">Erro ao carregar dados.</td></tr>';
+                    document.getElementById('tableBody').innerHTML = '<tr><td colspan="13" class="no-data" style="color:red;">Erro ao carregar dados.</td></tr>';
                 }
             }
 
@@ -801,7 +811,6 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 const tbody = document.getElementById('tableBody');
                 tbody.innerHTML = '';
 
-                // Atualiza o contador de filtrados e o título dinamicamente conforme a data selecionada
                 document.getElementById('kpiTotalFiltered').innerText = data.length;
                 if (selectedDate) {
                     document.getElementById('filteredTitle').innerText = `📊 Fornecedores no Dia (${selectedDate})`;
@@ -810,7 +819,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 }
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="12" class="no-data">Nenhum agendamento encontrado para os filtros selecionados.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="13" class="no-data">Nenhum agendamento encontrado para os filtros selecionados.</td></tr>';
                     return;
                 }
 
@@ -852,6 +861,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         <td><span class="code-badge">${row.access_code || '-'}</span></td>
                         <td><span class="status-badge ${statusClass}">${row.status || 'Pendente'}</span></td>
                         <td><strong>${row.supplier_name}</strong></td>
+                        <td><strong style="color: #0b192c;">${row.invoice_number || '-'}</strong></td>
                         <td>${contactDisplay}</td>
                         <td>${row.truck_plate}</td>
                         <td>${row.cargo_weight}</td>
@@ -881,6 +891,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     const matchDate = !dateVal || item.schedule_time === dateVal;
                     const matchSearch = !searchVal || 
                         (item.supplier_name && item.supplier_name.toLowerCase().includes(searchVal)) ||
+                        (item.invoice_number && item.invoice_number.toLowerCase().includes(searchVal)) ||
                         (item.truck_plate && item.truck_plate.toLowerCase().includes(searchVal)) ||
                         (item.access_code && item.access_code.toLowerCase().includes(searchVal));
 
@@ -943,13 +954,14 @@ def create_schedule(req: ScheduleRequest):
         cur.execute(
             """
             INSERT INTO schedules (
-                supplier_name, preferred_contact, phone, email, truck_plate, cargo_weight, storage_type, 
+                supplier_name, invoice_number, preferred_contact, phone, email, truck_plate, cargo_weight, storage_type, 
                 cargo_type, pallet_quantity, dock_id, schedule_time, access_code, status
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Pendente');
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Pendente');
             """,
             (
                 req.supplier_name.upper(),
+                req.invoice_number.upper(),
                 req.preferred_contact,
                 req.phone,
                 req.email,
@@ -994,7 +1006,7 @@ def update_schedule_status(schedule_id: int, req: StatusUpdateRequest, username:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ---
+# --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ||
 @app.delete("/api/schedule/{schedule_id}")
 def delete_schedule(schedule_id: int, username: str = Depends(get_current_username)):
     try:
@@ -1019,7 +1031,7 @@ def list_schedules(username: str = Depends(get_current_username)):
             """
             SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
                    cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_time, 'YYYY-MM-DD'), 
-                   access_code, status, phone, email, preferred_contact
+                   access_code, status, phone, email, preferred_contact, invoice_number
             FROM schedules
             ORDER BY id DESC;
             """
@@ -1046,6 +1058,7 @@ def list_schedules(username: str = Depends(get_current_username)):
                     "phone": r[11] if len(r) > 11 and r[11] else "",
                     "email": r[12] if len(r) > 12 and r[12] else "",
                     "preferred_contact": r[13] if len(r) > 13 and r[13] else "whatsapp",
+                    "invoice_number": r[14] if len(r) > 14 and r[14] else "",
                 }
             )
         return result
