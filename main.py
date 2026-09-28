@@ -111,7 +111,7 @@ def init_db():
                 cargo_weight NUMERIC(10, 2) NOT NULL,
                 storage_type VARCHAR(20) NOT NULL,
                 dock_id INT NOT NULL DEFAULT 10,
-                schedule_time DATE NOT NULL,
+                schedule_date DATE NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
@@ -953,7 +953,7 @@ def create_schedule(req: ScheduleRequest):
 
         # 1. Verifica quantos agendamentos já existem para esta data exata
         cur.execute(
-            "SELECT COUNT(*) FROM schedules WHERE schedule_time = %s;",
+            "SELECT COUNT(*) FROM schedules WHERE schedule_date = %s;",
             (req.schedule_date,)
         )
         total_data = cur.fetchone()[0]
@@ -972,7 +972,7 @@ def create_schedule(req: ScheduleRequest):
             """
             INSERT INTO schedules (
                 supplier_name, invoice_number, preferred_contact, phone, email, truck_plate, cargo_weight, storage_type, 
-                cargo_type, pallet_quantity, dock_id, schedule_time, access_code, status
+                cargo_type, pallet_quantity, dock_id, schedule_date, access_code, status
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Pendente');
             """,
@@ -1047,7 +1047,7 @@ def list_schedules(username: str = Depends(get_current_username)):
         cur.execute(
             """
             SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
-                   cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_title, 'YYYY-MM-DD'), 
+                   cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
                    access_code, status, phone, email, preferred_contact, invoice_number
             FROM schedules
             ORDER BY id DESC;
