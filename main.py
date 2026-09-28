@@ -944,13 +944,30 @@ def list_schedules_page(username: str = Depends(get_current_username)):
     """
 
 
-# --- API PARA SALVAR AGENDAMENTO (PÚBLICO) ---
+# --- API PARA SALVAR AGENDAMENTO COM VALIDAÇÃO DE LIMITE DIÁRIO (35) ---
 @app.post("/api/schedule")
 def create_schedule(req: ScheduleRequest):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
+        # 1. Verifica quantos agendamentos já existem para esta data exata
+        cur.execute(
+            "SELECT COUNT(*) FROM schedules WHERE schedule_time = %s;",
+            (req.schedule_date,)
+        )
+        total_data = cur.fetchone()[0]
+
+        # 2. Se já atingiu ou passou de 35, bloqueia e avisa o solicitante
+        if total_data >= 35:
+            cur.close()
+            conn.close()
+            raise HTTPException(
+                status_code=400,
+                detail="⚠️ Limite diário atingido! Já existem 35 fornecedores agendados para esta data. Por favor, escolha outra data."
+            )
+
+        # 3. Caso contrário, efetua a inserção normalmente
         cur.execute(
             """
             INSERT INTO schedules (
@@ -1006,7 +1023,7 @@ def update_schedule_status(schedule_id: int, req: StatusUpdateRequest, username:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ||
+# --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ---
 @app.delete("/api/schedule/{schedule_id}")
 def delete_schedule(schedule_id: int, username: str = Depends(get_current_username)):
     try:
@@ -1030,7 +1047,7 @@ def list_schedules(username: str = Depends(get_current_username)):
         cur.execute(
             """
             SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
-                   cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_time, 'YYYY-MM-DD'), 
+                   cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_title, 'YYYY-MM-DD'), 
                    access_code, status, phone, email, preferred_contact, invoice_number
             FROM schedules
             ORDER BY id DESC;
