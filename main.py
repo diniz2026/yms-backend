@@ -128,6 +128,7 @@ def init_db():
         conn.commit()
         cur.close()
         conn.close()
+        print("Banco de dados inicializado/atualizado com sucesso!")
     except Exception as e:
         print("Erro ao inicializar o banco:", e)
 
@@ -853,7 +854,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         const emailBodyReject = encodeURIComponent(`Olá,\\n\\nSua solicitação de agendamento para o dia ${row.schedule_time} não pôde ser aprovada.\\n\\nPor favor, acesse nosso site e realize uma nova solicitação selecionando outra data.\\n\\nAtenciosamente,\\nDiniz Alimentos`);
 
                         btnApprove = `<a class="btn-action btn-app" href="mailto:${emailAddr}?subject=${emailSubjApprove}&body=${emailBodyApprove}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Aprovado')">✉️ Aprovar</a>`;
-                        btnReject = `<a class="btn-action btn-rej" href="mailto:${emailAddr}?subject=${emailSubjReject}&body=${emailBodyReject}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Recusado')">❌ Recusar</a>`;
+                        btnReject = `<a class="btn-action btn-rej" href="mailto:${emailAddr}?subject=${emailSubjReject}&body=${emailBodyReject}" target="_blank" rel="noopener noreferrer" onclick="updateStatus(${row.id}, 'Recusado')">✉️ Recusar</a>`;
                     }
 
                     tr.innerHTML = `
