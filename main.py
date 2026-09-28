@@ -111,7 +111,7 @@ def init_db():
                 cargo_weight NUMERIC(10, 2) NOT NULL,
                 storage_type VARCHAR(20) NOT NULL,
                 dock_id INT NOT NULL DEFAULT 10,
-                schedule_date DATE NOT NULL,
+                schedule_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
@@ -124,6 +124,9 @@ def init_db():
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(20) DEFAULT 'whatsapp';
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS schedule_date DATE;
+            
+            -- Remove restrição NOT NULL da coluna antiga schedule_time caso ela exista
+            ALTER TABLE schedules ALTER COLUMN schedule_time DROP NOT NULL;
             """
         )
         conn.commit()
