@@ -125,7 +125,6 @@ def init_db():
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS schedule_date DATE;
             
-            -- Remove restrição NOT NULL da coluna antiga schedule_time caso ela exista
             ALTER TABLE schedules ALTER COLUMN schedule_time DROP NOT NULL;
             """
         )
@@ -903,6 +902,15 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     return matchStatus && matchDate && matchSearch;
                 });
 
+                // Ordena alfabeticamente pelo nome do fornecedor (A-Z)
+                filtered.sort((a, b) => {
+                    const nameA = (a.supplier_name || '').toUpperCase();
+                    const nameB = (b.supplier_name || '').toUpperCase();
+                    if (nameA < nameB) return -1;
+                    if (nameA > nameB) return 1;
+                    return 0;
+                });
+
                 renderTable(filtered, dateVal);
             }
 
@@ -910,7 +918,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 document.getElementById('filterStatus').value = '';
                 document.getElementById('filterDate').value = '';
                 document.getElementById('filterSearch').value = '';
-                renderTable(allSchedules, '');
+                applyFilters();
             }
 
             async function updateStatus(id, newStatus) {
@@ -956,14 +964,12 @@ def create_schedule(req: ScheduleRequest):
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
-        # 1. Verifica quantos agendamentos já existem para esta data exata
         cur.execute(
             "SELECT COUNT(*) FROM schedules WHERE schedule_date = %s;",
             (req.schedule_date,)
         )
         total_data = cur.fetchone()[0]
 
-        # 2. Se já atingiu ou passou de 35, bloqueia e avisa o solicitante
         if total_data >= 35:
             cur.close()
             conn.close()
@@ -972,7 +978,6 @@ def create_schedule(req: ScheduleRequest):
                 detail="⚠️ Limite diário atingido! Já existem 35 fornecedores agendados para esta data. Por favor, escolha outra data."
             )
 
-        # 3. Caso contrário, efetua a inserção normalmente
         cur.execute(
             """
             INSERT INTO schedules (
@@ -1025,7 +1030,7 @@ def update_schedule_status(schedule_id: int, req: StatusUpdateRequest, username:
         conn.close()
         return {"status": "sucesso", "mensagem": f"Status alterado para {req.status}"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_type=500, detail=str(e))
 
 
 # --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ---
@@ -1055,7 +1060,7 @@ def list_schedules(username: str = Depends(get_current_username)):
                    cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
                    access_code, status, phone, email, preferred_contact, invoice_number
             FROM schedules
-            ORDER BY id DESC;
+            ORDER BY supplier_name ASC;
             """
         )
         rows = cur.fetchall()
