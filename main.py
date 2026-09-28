@@ -123,6 +123,7 @@ def init_db():
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS email VARCHAR(100);
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(20) DEFAULT 'whatsapp';
             ALTER TABLE schedules ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
+            ALTER TABLE schedules ADD COLUMN IF NOT EXISTS schedule_date DATE;
             """
         )
         conn.commit()
