@@ -218,58 +218,59 @@ def export_schedules_pdf(username: str = Depends(get_current_username)):
     conn.close()
 
     buffer = BytesIO()
-    # Usar formato paisagem (landscape) para caber melhor todas as colunas
     c = canvas.Canvas(buffer, pagesize=landscape(letter))
     width, height = landscape(letter)
 
     # Cabeçalho do Relatório
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(30, height - 35, "DINIZ FOODS - Relatório de Agendamentos")
-    c.setFont("Helvetica", 10)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(30, height - 30, "DINIZ FOODS - Relatório de Agendamentos")
+    c.setFont("Helvetica", 9)
     c.drawString(
         30,
-        height - 50,
+        height - 45,
         "Com a Diniz você faz mais! | Listagem Geral Ordenada por Fornecedor"
         " (A-Z)",
     )
 
-    # Tabela - Cabeçalhos
-    y = height - 80
-    c.setFont("Helvetica-Bold", 9)
+    # Tabela - Cabeçalhos (Ajustados para não sobrepor)
+    y = height - 70
+    c.setFont("Helvetica-Bold", 8)
     c.drawString(30, y, "Senha")
     c.drawString(75, y, "Status")
-    c.drawString(135, y, "Fornecedor")
-    c.drawString(290, y, "Nota Fiscal")
-    c.drawString(370, y, "Placa")
-    c.drawString(425, y, "Peso (kg)")
-    c.drawString(485, y, "Armaz.")
-    c.drawString(540, y, "Tipo Carga")
-    c.drawString(620, y, "Qtd")
-    c.drawString(670, y, "Data Chegada")
+    c.drawString(130, y, "Fornecedor")
+    c.drawString(310, y, "Nota Fiscal")
+    c.drawString(390, y, "Placa")
+    c.drawString(440, y, "Peso (kg)")
+    c.drawString(500, y, "Armaz.")
+    c.drawString(560, y, "Tipo Carga")
+    c.drawString(640, y, "Qtd")
+    c.drawString(690, y, "Data Chegada")
 
-    c.line(30, y - 5, width - 30, y - 5)
-    y -= 20
+    c.line(30, y - 4, width - 30, y - 4)
+    y -= 18
 
     # Linhas de dados
     c.setFont("Helvetica", 8)
     for r in rows:
-      if y < 40:  # Cria nova página se o conteúdo estourar
+      if y < 35:  # Cria nova página se o conteúdo estourar
         c.showPage()
         y = height - 40
         c.setFont("Helvetica", 8)
 
       c.drawString(30, y, str(r[8] or "-"))  # Senha
       c.drawString(75, y, str(r[9] or "Pendente"))  # Status
-      c.drawString(30, y, str(r[1] or "")[:35])  # Fornecedor
-      c.drawString(290, y, str(r[10] or "-"))  # Nota Fiscal
-      c.drawString(370, y, str(r[2] or "-"))  # Placa
-      c.drawString(425, y, str(r[3] or "-"))  # Peso
-      c.drawString(485, y, str(r[4] or "-"))  # Armazenamento
-      c.drawString(540, y, str(r[5] or "-"))  # Tipo Carga
-      c.drawString(620, y, str(r[6] or "-"))  # Quantidade
-      c.drawString(670, y, str(r[7] or "-"))  # Data
+      c.drawString(
+          130, y, str(r[1] or "")[:32]
+      )  # Fornecedor (com limite para caber)
+      c.drawString(310, y, str(r[10] or "-"))  # Nota Fiscal
+      c.drawString(390, y, str(r[2] or "-"))  # Placa
+      c.drawString(440, y, str(r[3] or "-"))  # Peso
+      c.drawString(500, y, str(r[4] or "-"))  # Armazenamento
+      c.drawString(560, y, str(r[5] or "-"))  # Tipo Carga
+      c.drawString(640, y, str(r[6] or "-"))  # Quantidade
+      c.drawString(690, y, str(r[7] or "-"))  # Data
 
-      y -= 15
+      y -= 14
 
     c.save()
     buffer.seek(0)
