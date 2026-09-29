@@ -1,13 +1,18 @@
+from io import BytesIO
 import os
-import smtplib
 import secrets
-from email.mime.text import MIMEText
+import smtplib
 from email.mime.multipart import MIMEMultipart
-import psycopg2
-from fastapi import FastAPI, HTTPException, Depends, status
+from email.mime.text import MIMEText
+from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse, FileResponse
+import psycopg2
 from pydantic import BaseModel
+
+# Importações do ReportLab para a geração do PDF
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.pdfgen import canvas
 
 app = FastAPI(title="DINIZ - YMS Agendamento de Entregas")
 
@@ -29,26 +34,36 @@ security = HTTPBasic()
 
 
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Acesso negado. Credenciais administrativas inválidas.",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
+  correct_username = secrets.compare_digest(
+      credentials.username, ADMIN_USERNAME
+  )
+  correct_password = secrets.compare_digest(
+      credentials.password, ADMIN_PASSWORD
+  )
+  if not (correct_username and correct_password):
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Acesso negado. Credenciais administrativas inválidas.",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+  return credentials.username
 
 
 def send_email_notification(schedule_data: dict):
-    if not SMTP_EMAIL or not SMTP_PASSWORD or not NOTIFY_EMAIL:
-        print("AVISO: Configurações de e-mail não encontradas nas variáveis de ambiente.")
-        return
+  if not SMTP_EMAIL or not SMTP_PASSWORD or not NOTIFY_EMAIL:
+    print(
+        "AVISO: Configurações de e-mail não encontradas nas variáveis de"
+        " ambiente."
+    )
+    return
 
-    try:
-        subject = f"📬 Novo Agendamento Pendente - {schedule_data['supplier_name']}"
-        
-        body_html = f"""
+  try:
+    subject = (
+        "📬 Novo Agendamento Pendente - "
+        f"{schedule_data['supplier_name']}"
+    )
+
+    body_html = f"""
         <html>
         <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
             <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
@@ -80,30 +95,30 @@ def send_email_notification(schedule_data: dict):
         </html>
         """
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = SMTP_EMAIL
-        msg["To"] = NOTIFY_EMAIL
-        msg.attach(MIMEText(body_html, "html"))
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = SMTP_EMAIL
+    msg["To"] = NOTIFY_EMAIL
+    msg.attach(MIMEText(body_html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, NOTIFY_EMAIL, msg.as_string())
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+      server.starttls()
+      server.login(SMTP_EMAIL, SMTP_PASSWORD)
+      server.sendmail(SMTP_EMAIL, NOTIFY_EMAIL, msg.as_string())
 
-        print("E-mail de notificação enviado com sucesso!")
-    except Exception as e:
-        print(f"Erro ao enviar e-mail de notificação: {e}")
+    print("E-mail de notificação enviado com sucesso!")
+  except Exception as e:
+    print(f"Erro ao enviar e-mail de notificação: {e}")
 
 
 def init_db():
-    if not DATABASE_URL:
-        return
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute(
-            """
+  if not DATABASE_URL:
+    return
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        """
             CREATE TABLE IF NOT EXISTS schedules (
                 id SERIAL PRIMARY KEY,
                 supplier_name VARCHAR(100) NOT NULL,
@@ -127,54 +142,157 @@ def init_db():
             
             ALTER TABLE schedules ALTER COLUMN schedule_time DROP NOT NULL;
             """
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("Banco de dados inicializado/atualizado com sucesso!")
-    except Exception as e:
-        print("Erro ao inicializar o banco:", e)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Banco de dados inicializado/atualizado com sucesso!")
+  except Exception as e:
+    print("Erro ao inicializar o banco:", e)
 
 
 init_db()
 
 
 class ScheduleRequest(BaseModel):
-    supplier_name: str
-    invoice_number: str = ""
-    preferred_contact: str = "whatsapp"
-    phone: str = ""
-    email: str = ""
-    truck_plate: str
-    cargo_weight: float
-    storage_type: str
-    cargo_type: str
-    pallet_quantity: int
-    dock_id: int = 10
-    schedule_date: str
-    access_code: str
+  supplier_name: str
+  invoice_number: str = ""
+  preferred_contact: str = "whatsapp"
+  phone: str = ""
+  email: str = ""
+  truck_plate: str
+  cargo_weight: float
+  storage_type: str
+  cargo_type: str
+  pallet_quantity: int
+  dock_id: int = 10
+  schedule_date: str
+  access_code: str
 
 
 class StatusUpdateRequest(BaseModel):
-    status: str
+  status: str
 
 
 # --- DOWNLOAD DO MANUAL EM PDF (PÚBLICO) ---
 @app.get("/manual.pdf")
 def get_manual():
-    pdf_path = "manual.pdf"
-    if os.path.exists(pdf_path):
-        return FileResponse(pdf_path, media_type="application/pdf", filename="Manual_do_Fornecedor_Diniz.pdf")
-    elif os.path.exists("Manual do Fornecedor Diniz Foods - Versão Corrigida.pdf"):
-        return FileResponse("Manual do Fornecedor Diniz Foods - Versão Corrigida.pdf", media_type="application/pdf", filename="Manual_do_Fornecedor_Diniz.pdf")
-    else:
-        raise HTTPException(status_code=404, detail="Manual em PDF não encontrado no servidor.")
+  pdf_path = "manual.pdf"
+  if os.path.exists(pdf_path):
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename="Manual_do_Fornecedor_Diniz.pdf",
+    )
+  elif os.path.exists(
+      "Manual do Fornecedor Diniz Foods - Versão Corrigida.pdf"
+  ):
+    return FileResponse(
+        "Manual do Fornecedor Diniz Foods - Versão Corrigida.pdf",
+        media_type="application/pdf",
+        filename="Manual_do_Fornecedor_Diniz.pdf",
+    )
+  else:
+    raise HTTPException(
+        status_code=404, detail="Manual em PDF não encontrado no servidor."
+    )
+
+
+# --- ROTA PARA EXPORTAR PDF NO BACKEND ---
+@app.get("/api/exportar-pdf")
+def export_schedules_pdf(username: str = Depends(get_current_username)):
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        """
+            SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
+                   cargo_type, pallet_quantity, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
+                   access_code, status, invoice_number
+            FROM schedules
+            ORDER BY supplier_name ASC;
+            """
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    buffer = BytesIO()
+    # Usar formato paisagem (landscape) para caber melhor todas as colunas
+    c = canvas.Canvas(buffer, pagesize=landscape(letter))
+    width, height = landscape(letter)
+
+    # Cabeçalho do Relatório
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(30, height - 35, "DINIZ FOODS - Relatório de Agendamentos")
+    c.setFont("Helvetica", 10)
+    c.drawString(
+        30,
+        height - 50,
+        "Com a Diniz você faz mais! | Listagem Geral Ordenada por Fornecedor"
+        " (A-Z)",
+    )
+
+    # Tabela - Cabeçalhos
+    y = height - 80
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(30, y, "Senha")
+    c.drawString(75, y, "Status")
+    c.drawString(135, y, "Fornecedor")
+    c.drawString(290, y, "Nota Fiscal")
+    c.drawString(370, y, "Placa")
+    c.drawString(425, y, "Peso (kg)")
+    c.drawString(485, y, "Armaz.")
+    c.drawString(540, y, "Tipo Carga")
+    c.drawString(620, y, "Qtd")
+    c.drawString(670, y, "Data Chegada")
+
+    c.line(30, y - 5, width - 30, y - 5)
+    y -= 20
+
+    # Linhas de dados
+    c.setFont("Helvetica", 8)
+    for r in rows:
+      if y < 40:  # Cria nova página se o conteúdo estourar
+        c.showPage()
+        y = height - 40
+        c.setFont("Helvetica", 8)
+
+      c.drawString(30, y, str(r[8] or "-"))  # Senha
+      c.drawString(75, y, str(r[9] or "Pendente"))  # Status
+      c.drawString(30, y, str(r[1] or "")[:35])  # Fornecedor
+      c.drawString(290, y, str(r[10] or "-"))  # Nota Fiscal
+      c.drawString(370, y, str(r[2] or "-"))  # Placa
+      c.drawString(425, y, str(r[3] or "-"))  # Peso
+      c.drawString(485, y, str(r[4] or "-"))  # Armazenamento
+      c.drawString(540, y, str(r[5] or "-"))  # Tipo Carga
+      c.drawString(620, y, str(r[6] or "-"))  # Quantidade
+      c.drawString(670, y, str(r[7] or "-"))  # Data
+
+      y -= 15
+
+    c.save()
+    buffer.seek(0)
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=relatorio_agendamentos_diniz.pdf"
+            )
+        },
+    )
+  except Exception as e:
+    raise HTTPException(
+        status_code=500, detail=f"Erro ao gerar relatório em PDF: {str(e)}"
+    )
 
 
 # --- TELA DE FORMULÁRIO DO SOLICITANTE (PÚBLICO) ---
 @app.get("/", response_class=HTMLResponse)
 def get_form():
-    return """
+  return """
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
@@ -510,7 +628,7 @@ def get_form():
 # --- TELA DE GESTÃO DE AGENDAMENTOS (RESTRITA A ADMINISTRADORES) ---
 @app.get("/agendamentos", response_class=HTMLResponse)
 def list_schedules_page(username: str = Depends(get_current_username)):
-    return """
+  return """
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
@@ -704,7 +822,8 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     </div>
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-pdf" onclick="window.print()">📄 Exportar PDF / Imprimir</button>
+                    <a href="/api/exportar-pdf" class="btn btn-pdf">📥 Salvar em PDF</a>
+                    <button class="btn btn-pdf" onclick="window.print()">🖨️ Imprimir</button>
                     <a href="/" target="_blank" class="btn btn-new">➕ Novo Agendamento</a>
                 </div>
             </div>
@@ -960,135 +1079,144 @@ def list_schedules_page(username: str = Depends(get_current_username)):
 # --- API PARA SALVAR AGENDAMENTO COM VALIDAÇÃO DE LIMITE DIÁRIO (35) ---
 @app.post("/api/schedule")
 def create_schedule(req: ScheduleRequest):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-        cur.execute(
-            "SELECT COUNT(*) FROM schedules WHERE schedule_date = %s;",
-            (req.schedule_date,)
-        )
-        total_data = cur.fetchone()[0]
+    cur.execute(
+        "SELECT COUNT(*) FROM schedules WHERE schedule_date = %s;",
+        (req.schedule_date,),
+    )
+    total_data = cur.fetchone()[0]
 
-        if total_data >= 35:
-            cur.close()
-            conn.close()
-            raise HTTPException(
-                status_code=400,
-                detail="⚠️ Limite diário atingido! Já existem 35 fornecedores agendados para esta data. Por favor, escolha outra data."
-            )
+    if total_data >= 35:
+      cur.close()
+      conn.close()
+      raise HTTPException(
+          status_code=400,
+          detail=(
+              "⚠️ Limite diário atingido! Já existem 35 fornecedores agendados"
+              " para esta data. Por favor, escolha outra data."
+          ),
+      )
 
-        cur.execute(
-            """
+    cur.execute(
+        """
             INSERT INTO schedules (
                 supplier_name, invoice_number, preferred_contact, phone, email, truck_plate, cargo_weight, storage_type, 
                 cargo_type, pallet_quantity, dock_id, schedule_date, access_code, status
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Pendente');
             """,
-            (
-                req.supplier_name.upper(),
-                req.invoice_number.upper(),
-                req.preferred_contact,
-                req.phone,
-                req.email,
-                req.truck_plate.upper(),
-                req.cargo_weight,
-                req.storage_type,
-                req.cargo_type,
-                req.pallet_quantity,
-                req.dock_id,
-                req.schedule_date,
-                req.access_code,
-            ),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        (
+            req.supplier_name.upper(),
+            req.invoice_number.upper(),
+            req.preferred_contact,
+            req.phone,
+            req.email,
+            req.truck_plate.upper(),
+            req.cargo_weight,
+            req.storage_type,
+            req.cargo_type,
+            req.pallet_quantity,
+            req.dock_id,
+            req.schedule_date,
+            req.access_code,
+        ),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        send_email_notification(req.dict())
+    send_email_notification(req.dict())
 
-        return {"status": "sucesso", "mensagem": "Solicitação registrada com sucesso!"}
-    except HTTPException as http_ex:
-        raise http_ex
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "sucesso", "mensagem": "Solicitação registrada com sucesso!"}
+  except HTTPException as http_ex:
+    raise http_ex
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- API PARA ALTERAR STATUS (ADMINISTRADOR) ---
 @app.patch("/api/schedule/{schedule_id}/status")
-def update_schedule_status(schedule_id: int, req: StatusUpdateRequest, username: str = Depends(get_current_username)):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE schedules SET status = %s WHERE id = %s;",
-            (req.status, schedule_id)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {"status": "sucesso", "mensagem": f"Status alterado para {req.status}"}
-    except Exception as e:
-        raise HTTPException(status_type=500, detail=str(e))
+def update_schedule_status(
+    schedule_id: int,
+    req: StatusUpdateRequest,
+    username: str = Depends(get_current_username),
+):
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE schedules SET status = %s WHERE id = %s;",
+        (req.status, schedule_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "sucesso", "mensagem": f"Status alterado para {req.status}"}
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- API PARA EXCLUIR AGENDAMENTO (ADMINISTRADOR) ---
 @app.delete("/api/schedule/{schedule_id}")
-def delete_schedule(schedule_id: int, username: str = Depends(get_current_username)):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("DELETE FROM schedules WHERE id = %s;", (schedule_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {"status": "sucesso", "mensagem": "Agendamento excluído com sucesso!"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def delete_schedule(
+    schedule_id: int, username: str = Depends(get_current_username)
+):
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM schedules WHERE id = %s;", (schedule_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "sucesso", "mensagem": "Agendamento excluído com sucesso!"}
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- API PARA LISTAR OS AGENDAMENTOS (ADMINISTRADOR) ---
 @app.get("/api/schedules")
 def list_schedules(username: str = Depends(get_current_username)):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute(
-            """
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        """
             SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
                    cargo_type, pallet_quantity, dock_id, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
                    access_code, status, phone, email, preferred_contact, invoice_number
             FROM schedules
             ORDER BY supplier_name ASC;
             """
-        )
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-        result = []
-        for r in rows:
-            result.append(
-                {
-                    "id": r[0],
-                    "supplier_name": r[1],
-                    "truck_plate": r[2],
-                    "cargo_weight": r[3],
-                    "storage_type": r[4],
-                    "cargo_type": r[5],
-                    "pallet_quantity": r[6],
-                    "dock_id": r[7],
-                    "schedule_time": r[8],
-                    "access_code": r[9],
-                    "status": r[10] if r[10] else "Pendente",
-                    "phone": r[11] if len(r) > 11 and r[11] else "",
-                    "email": r[12] if len(r) > 12 and r[12] else "",
-                    "preferred_contact": r[13] if len(r) > 13 and r[13] else "whatsapp",
-                    "invoice_number": r[14] if len(r) > 14 and r[14] else "",
-                }
-            )
-        return result
-    except Exception as e:
-        print(f"ERRO CRÍTICO EM /api/schedules: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+    result = []
+    for r in rows:
+      result.append(
+          {
+              "id": r[0],
+              "supplier_name": r[1],
+              "truck_plate": r[2],
+              "cargo_weight": r[3],
+              "storage_type": r[4],
+              "cargo_type": r[5],
+              "pallet_quantity": r[6],
+              "dock_id": r[7],
+              "schedule_time": r[8],
+              "access_code": r[9],
+              "status": r[10] if r[10] else "Pendente",
+              "phone": r[11] if len(r) > 11 and r[11] else "",
+              "email": r[12] if len(r) > 12 and r[12] else "",
+              "preferred_contact": r[13] if len(r) > 13 and r[13] else "whatsapp",
+              "invoice_number": r[14] if len(r) > 14 and r[14] else "",
+          }
+      )
+    return result
+  except Exception as e:
+    print(f"ERRO CRÍTICO EM /api/schedules: {str(e)}")
+    raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
