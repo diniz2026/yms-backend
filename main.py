@@ -198,21 +198,36 @@ def get_manual():
     )
 
 
-# --- ROTA PARA EXPORTAR PDF NO BACKEND ---
+# --- ROTA PARA EXPORTAR PDF NO BACKEND (COM FILTRO DE DATA OPCIONAL) ---
 @app.get("/api/exportar-pdf")
-def export_schedules_pdf(username: str = Depends(get_current_username)):
+def export_schedules_pdf(date: str = None, username: str = Depends(get_current_username)):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    cur.execute(
-        """
-            SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
-                   cargo_type, pallet_quantity, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
-                   access_code, status, invoice_number
-            FROM schedules
-            ORDER BY supplier_name ASC;
-            """
-    )
+
+    if date:
+      cur.execute(
+          """
+              SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
+                     cargo_type, pallet_quantity, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
+                     access_code, status, invoice_number
+              FROM schedules
+              WHERE schedule_date = %s
+              ORDER BY supplier_name ASC;
+              """,
+          (date,),
+      )
+    else:
+      cur.execute(
+          """
+              SELECT id, supplier_name, truck_plate, cargo_weight, storage_type, 
+                     cargo_type, pallet_quantity, TO_CHAR(schedule_date, 'YYYY-MM-DD'), 
+                     access_code, status, invoice_number
+              FROM schedules
+              ORDER BY supplier_name ASC;
+              """
+      )
+
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -225,14 +240,15 @@ def export_schedules_pdf(username: str = Depends(get_current_username)):
     c.setFont("Helvetica-Bold", 14)
     c.drawString(30, height - 30, "DINIZ FOODS - Relatório de Agendamentos")
     c.setFont("Helvetica", 9)
-    c.drawString(
-        30,
-        height - 45,
-        "Com a Diniz você faz mais! | Listagem Geral Ordenada por Fornecedor"
-        " (A-Z)",
-    )
+    
+    if date:
+      subtitle = f"Com a Diniz você faz mais! | Agendamentos do dia: {date} (Ordenado A-Z)"
+    else:
+      subtitle = "Com a Diniz você faz mais! | Listagem Geral de Todos os Dias (Ordenado A-Z)"
+      
+    c.drawString(30, height - 45, subtitle)
 
-    # Tabela - Cabeçalhos (Ajustados para não sobrepor)
+    # Tabela - Cabeçalhos
     y = height - 70
     c.setFont("Helvetica-Bold", 8)
     c.drawString(30, y, "Senha")
@@ -252,16 +268,14 @@ def export_schedules_pdf(username: str = Depends(get_current_username)):
     # Linhas de dados
     c.setFont("Helvetica", 8)
     for r in rows:
-      if y < 35:  # Cria nova página se o conteúdo estourar
+      if y < 35:  # Cria nova página se estourar
         c.showPage()
         y = height - 40
         c.setFont("Helvetica", 8)
 
       c.drawString(30, y, str(r[8] or "-"))  # Senha
       c.drawString(75, y, str(r[9] or "Pendente"))  # Status
-      c.drawString(
-          130, y, str(r[1] or "")[:32]
-      )  # Fornecedor (com limite para caber)
+      c.drawString(130, y, str(r[1] or "")[:32])  # Fornecedor
       c.drawString(310, y, str(r[10] or "-"))  # Nota Fiscal
       c.drawString(390, y, str(r[2] or "-"))  # Placa
       c.drawString(440, y, str(r[3] or "-"))  # Peso
@@ -275,13 +289,13 @@ def export_schedules_pdf(username: str = Depends(get_current_username)):
     c.save()
     buffer.seek(0)
 
+    filename = f"agendamentos_{date}.pdf" if date else "relatorio_geral_agendamentos.pdf"
+
     return Response(
         content=buffer.getvalue(),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": (
-                "attachment; filename=relatorio_agendamentos_diniz.pdf"
-            )
+            "Content-Disposition": f"attachment; filename={filename}"
         },
     )
   except Exception as e:
@@ -823,7 +837,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     </div>
                 </div>
                 <div class="btn-group">
-                    <a href="/api/exportar-pdf" class="btn btn-pdf">📥 Salvar em PDF</a>
+                    <a href="#" onclick="exportPDF(event)" class="btn btn-pdf">📥 Salvar em PDF</a>
                     <button class="btn btn-pdf" onclick="window.print()">🖨️ Imprimir</button>
                     <a href="/" target="_blank" class="btn btn-new">➕ Novo Agendamento</a>
                 </div>
@@ -901,6 +915,16 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 return `${year}-${month}-${day}`;
+            }
+
+            function exportPDF(e) {
+                e.preventDefault();
+                const dateVal = document.getElementById('filterDate').value;
+                let url = '/api/exportar-pdf';
+                if (dateVal) {
+                    url += `?date=${dateVal}`;
+                }
+                window.location.href = url;
             }
 
             async function loadSchedules() {
@@ -1022,7 +1046,6 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                     return matchStatus && matchDate && matchSearch;
                 });
 
-                // Ordena alfabeticamente pelo nome do fornecedor (A-Z)
                 filtered.sort((a, b) => {
                     const nameA = (a.supplier_name || '').toUpperCase();
                     const nameB = (b.supplier_name || '').toUpperCase();
