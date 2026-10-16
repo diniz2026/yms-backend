@@ -74,7 +74,7 @@ def send_email_notification(schedule_data: dict):
                 
                 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f9f9f9;">
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Fornecedor:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data['supplier_name']}</td></tr>
-                    <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Nota Fiscal (NF):</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee; color: #0b192c; font-weight: bold;">{schedule_data.get('invoice_number', '-')}</td></tr>
+                    <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Nota(s) Fiscal(is):</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee; color: #0b192c; font-weight: bold;">{schedule_data.get('invoice_number', '-')}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Contato Preferencial:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data.get('preferred_contact', 'whatsapp').upper()}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Dado de Contato:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data.get('phone') if schedule_data.get('preferred_contact') == 'whatsapp' else schedule_data.get('email')}</td></tr>
                     <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Placa do Veículo:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">{schedule_data['truck_plate']}</td></tr>
@@ -254,7 +254,7 @@ def export_schedules_pdf(date: str = None, username: str = Depends(get_current_u
     c.drawString(30, y, "Senha")
     c.drawString(75, y, "Status")
     c.drawString(130, y, "Fornecedor")
-    c.drawString(310, y, "Nota Fiscal")
+    c.drawString(310, y, "Nota(s) Fiscal(is)")
     c.drawString(390, y, "Placa")
     c.drawString(440, y, "Peso (kg)")
     c.drawString(500, y, "Armaz.")
@@ -472,8 +472,8 @@ def get_form():
                     </div>
 
                     <div class="form-group">
-                        <label for="invoiceNumber">NÚMERO DA NOTA FISCAL (NF):</label>
-                        <input type="text" id="invoiceNumber" class="uppercase-input" required placeholder="Ex: 123456 ou 000.123.456">
+                        <label for="invoiceNumber">NÚMERO DA(S) NOTA(S) FISCAL(IS):</label>
+                        <input type="text" id="invoiceNumber" class="uppercase-input" required placeholder="Ex: 1234 / 1235 ou 000.123">
                     </div>
 
                     <div class="form-group">
@@ -888,7 +888,7 @@ def list_schedules_page(username: str = Depends(get_current_username)):
                         <th>Senha</th>
                         <th>Status</th>
                         <th>Fornecedor</th>
-                        <th>Nota Fiscal (NF)</th>
+                        <th>Nota(s) Fiscal(is)</th>
                         <th>Contato Escolhido</th>
                         <th>Placa</th>
                         <th>Peso (kg)</th>
@@ -1224,4 +1224,4 @@ def list_schedules(username: str = Depends(get_current_username)):
     return result
   except Exception as e:
     print(f"ERRO CRÍTICO EM /api/schedules: {str(e)}")
-    raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+    raise HTTPException(status_status=500, detail=f"Erro interno: {str(e)}")
