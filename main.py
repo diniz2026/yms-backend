@@ -1100,29 +1100,12 @@ def list_schedules_page(username: str = Depends(get_current_username)):
     """
 
 
-# --- API PARA SALVAR AGENDAMENTO COM VALIDAÇÃO DE LIMITE DIÁRIO (35) ---
+# --- API PARA SALVAR AGENDAMENTO (SEM LIMITE DE 35) ---
 @app.post("/api/schedule")
 def create_schedule(req: ScheduleRequest):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-
-    cur.execute(
-        "SELECT COUNT(*) FROM schedules WHERE schedule_date = %s;",
-        (req.schedule_date,),
-    )
-    total_data = cur.fetchone()[0]
-
-    if total_data >= 35:
-      cur.close()
-      conn.close()
-      raise HTTPException(
-          status_code=400,
-          detail=(
-              "⚠️ Limite diário atingido! Já existem 35 fornecedores agendados"
-              " para esta data. Por favor, escolha outra data."
-          ),
-      )
 
     cur.execute(
         """
@@ -1155,8 +1138,6 @@ def create_schedule(req: ScheduleRequest):
     send_email_notification(req.dict())
 
     return {"status": "sucesso", "mensagem": "Solicitação registrada com sucesso!"}
-  except HTTPException as http_ex:
-    raise http_ex
   except Exception as e:
     raise HTTPException(status_code=500, detail=str(e))
 
